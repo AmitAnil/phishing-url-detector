@@ -6,3 +6,4 @@ validators
 dnspython
 beautifulsoup4
 fpdf2
+plotly
