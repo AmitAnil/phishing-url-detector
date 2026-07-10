@@ -1,0 +1,8 @@
+streamlit
+requests
+python-whois
+tldextract
+validators
+dnspython
+beautifulsoup4
+fpdf2
