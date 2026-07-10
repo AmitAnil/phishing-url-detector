@@ -56,8 +56,9 @@ def generate_pdf_report(scan: dict) -> bytes:
 
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(60, 60, 60)
-    pdf.multi_cell(0, 6, f"Scanned URL: {scan.get('url', '')}")
-    pdf.multi_cell(0, 6, f"Scan Timestamp: {scan.get('timestamp', '')}")
+    pdf.cell(0, 8, f"Scanned URL: {scan.get('url', '')}", ln=True)
+    pdf.cell(0, 8, f"Scan Timestamp: {scan.get('timestamp', '')}", ln=True)
+    pdf.ln(4)
     pdf.ln(4)
 
     _section_title(pdf, "Domain Information")
