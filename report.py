@@ -41,13 +41,22 @@ def _section_title(pdf: FPDF, title: str) -> None:
     pdf.ln(3)
 
 
-def _kv_row(pdf: FPDF, key: str, value) -> None:
+def _kv_row(pdf, key: str, value) -> None:
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(40, 40, 40)
-    pdf.cell(55, 7, key)
-    pdf.set_font("Helvetica", "", 10)
-    pdf.multi_cell(0, 7, str(value))
 
+    pdf.cell(50, 8, str(key), border=0)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(0, 0, 0)
+
+    x = pdf.get_x()
+    y = pdf.get_y()
+
+    pdf.set_xy(x, y)
+    pdf.multi_cell(140, 8, str(value), border=0)
+
+    pdf.ln(1)
 
 def generate_pdf_report(scan: dict) -> bytes:
     """Builds a PDF report and returns it as raw bytes."""
