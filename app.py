@@ -1,159 +1,103 @@
-"""
-app.py
-------
-Main Streamlit entry-point for the Phishing URL Detection dashboard.
-Run with:  streamlit run app.py
-"""
 
 import streamlit as st
-
 import database
-import report
 import scanner
 import utils
+import report
 
-# --------------------------------------------------------------------------
-# Page configuration (must be the first Streamlit call)
-# --------------------------------------------------------------------------
-st.set_page_config(
-    page_title="Phishing URL Detection System",
-    page_icon="🛡️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="Phishing URL Detection System", page_icon="🛡️", layout="wide")
 
-# --------------------------------------------------------------------------
-# Session state defaults
-# --------------------------------------------------------------------------
-defaults = {
-    "theme": "dark",
-    "manual_api_key": "",
-    "last_scan": None,
-    "page": "Scanner",
-}
-for key, value in defaults.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
+if "theme" not in st.session_state:
+    st.session_state.theme="dark"
+if "manual_api_key" not in st.session_state:
+    st.session_state.manual_api_key=""
+if "last_scan" not in st.session_state:
+    st.session_state.last_scan=None
 
 database.init_db()
-utils.load_css(st.session_state["theme"])
+utils.load_css(st.session_state.theme)
 
-# --------------------------------------------------------------------------
-# Sidebar — navigation, API key, theme toggle
-# --------------------------------------------------------------------------
 with st.sidebar:
-    from pathlib import Path
-    logo_path = Path(__file__).parent / "assets" / "logo.png"
-    if logo_path.exists():
-        st.image(str(logo_path), use_container_width=True)
-    else:
-        st.markdown("<h1 style='text-align:center;'>🛡️</h1>", unsafe_allow_html=True)
+    st.title("🛡️ Control Panel")
+    page=st.radio("Navigation",["Scanner","History","About"])
+    st.session_state.theme="light" if st.toggle("Light mode",value=st.session_state.theme=="light") else "dark"
+    st.session_state.manual_api_key=st.text_input("VirusTotal API Key",type="password",value=st.session_state.manual_api_key)
 
-    st.markdown("### Control Panel")
-    st.session_state["page"] = st.radio(
-        "Navigation", ["Scanner", "History", "About"], label_visibility="collapsed"
-    )
+def render_results(scan):
+    st.success(f"Verdict: {scan.get('verdict')}")
+    c1,c2,c3=st.columns(3)
+    c1.metric("Risk Score",scan.get("risk_score"))
+    c2.metric("Risk Level",scan.get("risk_level"))
+    c3.metric("HTTPS","Yes" if scan.get("https") else "No")
+    st.plotly_chart(utils.build_gauge(scan.get("risk_score",0)),use_container_width=True)
+    st.subheader("Domain")
+    st.json({
+        "Registered Domain":scan.get("registered_domain"),
+        "Domain":scan.get("domain"),
+        "Suffix":scan.get("suffix"),
+        "Subdomain":scan.get("subdomain")
+    })
+    st.subheader("WHOIS")
+    st.json(scan.get("whois",{}))
+    st.subheader("VirusTotal")
+    st.json(scan.get("virustotal",{}))
+    pdf=report.generate_pdf_report(scan)
+    csv=report.generate_csv_report(scan)
+    a,b=st.columns(2)
+    with a:
+        st.download_button("Download PDF",pdf,"report.pdf","application/pdf")
+    with b:
+        st.download_button("Download CSV",csv,"report.csv","text/csv")
 
-    st.divider()
-    st.markdown("**🌗 Theme**")
-    light_mode = st.toggle("Light mode", value=(st.session_state["theme"] == "light"))
-    st.session_state["theme"] = "light" if light_mode else "dark"
+def scanner_page():
+    st.title("🛡️ Phishing URL Detection System")
+    url=st.text_input("Enter URL")
+    if st.button("Scan URL"):
+        if not url.strip():
+            st.warning("Enter a URL.")
+        else:
+            api=st.session_state.manual_api_key or utils.get_api_key()
+            with st.spinner("Scanning..."):
+                result=scanner.perform_full_scan(url.strip(),api)
+            database.save_scan(result)
+            st.session_state.last_scan=result
+    if st.session_state.last_scan:
+        render_results(st.session_state.last_scan)
 
-    st.divider()
-    st.markdown("**🔑 VirusTotal API Key**")
-    st.session_state["manual_api_key"] = st.text_input(
-        "API Key",
-        value=st.session_state["manual_api_key"],
-        type="password",
-        placeholder="Paste your VirusTotal API key",
-        help="Kept only for this session. For production, use st.secrets or the VT_API_KEY env variable.",
-        label_visibility="collapsed",
-    )
+def history_page():
+    st.title("History")
+    rows=database.get_history()
+    if not rows:
+        st.info("No history.")
+        return
+    st.dataframe(rows,use_container_width=True)
+    if st.button("Clear History"):
+        database.clear_history()
+        st.success("History cleared")
+        st.rerun()
 
-    st.divider()
-    st.caption("Built with Streamlit • Secured by VirusTotal")
+def about_page():
+    st.title("About")
+    st.markdown("""
+### Phishing URL Detection System
 
+Features:
+- URL Validation
+- WHOIS
+- VirusTotal
+- Risk Score
+- PDF & CSV Reports
+- SQLite History
 
-# --------------------------------------------------------------------------
-# Reusable UI components
-# --------------------------------------------------------------------------
-def render_card(icon: str, title: str, value_html: str) -> str:
-    return f"""
-    <div class="glass-card">
-        <div class="card-icon">{icon}</div>
-        <div class="card-title">{title}</div>
-        <div class="card-value">{value_html}</div>
-    </div>
-    """
+Created by Amit Anil.
+""")
 
+if page=="Scanner":
+    scanner_page()
+elif page=="History":
+    history_page()
+else:
+    about_page()
 
-def render_copy_button(text: str) -> None:
-    safe_text = text.replace("\\", "\\\\").replace("'", "\\'")
-    st.markdown(
-        f"""
-        <button class="copy-btn" onclick="navigator.clipboard.writeText('{safe_text}');
-            this.innerText='✅ Copied!'; setTimeout(()=>{{this.innerText='📋 Copy URL'}}, 1500);">
-            📋 Copy URL
-        </button>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_loading_animation(placeholder) -> None:
-    placeholder.markdown(
-        """
-        <div class="scan-loader">
-            Scanning target URL, please wait
-            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_footer() -> None:
-    st.markdown(
-        """
-        <div class="app-footer">
-            🛡️ Phishing URL Detection System &nbsp;|&nbsp; Created by: <span>Amit Anil</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# --------------------------------------------------------------------------
-# PAGE: Scanner (Home + Results)
-# --------------------------------------------------------------------------
-def scanner_page() -> None:
-    st.markdown('<div class="hero-title">🛡️ Phishing URL Detection System</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="hero-subtitle">Detect malicious URLs using AI-assisted heuristics and VirusTotal.</div>',
-        unsafe_allow_html=True,
-    )
-
-    _, mid, _ = st.columns([1, 3, 1])
-    with mid:
-        url_input = st.text_input(
-            "url", placeholder="Enter Website URL", label_visibility="collapsed", key="url_box"
-        )
-        scan_clicked = st.button("🔍 Scan URL", use_container_width=True)
-
-    if scan_clicked:
-        if not url_input.strip():
-            st.warning("Please enter a URL to scan.")
-            return
-
-        loader = st.empty()
-        render_loading_animation(loader)
-
-        api_key = st.session_state["manual_api_key"] or utils.get_api_key()
-        scan_result = scanner.perform_full_scan(url_input.strip(), api_key)
-
-        loader.empty()
-        database.save_scan(scan_result)
-        st.session_state["last_scan"] = scan_result
-
-    if st.session_state["last_scan"]:
-        render_results
+st.markdown("---")
+st.caption("🛡️ Phishing URL Detection System • Created by Amit Anil")
